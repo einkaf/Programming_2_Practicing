@@ -12,9 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 public class MovieController implements HttpHandler {
+
     private final MovieService movieService;
     private final Gson gson = new Gson();
 
@@ -47,7 +47,7 @@ public class MovieController implements HttpHandler {
         }
 
         List<Movie> movies = movieService.getAllMovies();
-        String json = moviesToJson(movies);
+        String json = gson.toJson(movies);
 
         ApiUtils.sendResponse(exchange, 200, json);
     }
@@ -60,17 +60,12 @@ public class MovieController implements HttpHandler {
 
         try {
             String requestBody = readRequestBody(exchange);
+            Movie movie = gson.fromJson(requestBody, Movie.class);
 
-            if (!isValidMovieJson(requestBody)) {
+            if (!isValidMovie(movie)) {
                 ApiUtils.sendResponse(exchange, 400, "{ \"error\": \"Invalid movie data\" }");
                 return;
             }
-
-            String title = extractValue(requestBody, "title");
-            String genre = extractValue(requestBody, "genre");
-            int releaseYear = Integer.parseInt(extractValue(requestBody, "releaseYear"));
-
-            Movie movie = new Movie(title, genre, releaseYear);
 
             boolean added = movieService.addMovie(movie);
 
@@ -94,17 +89,12 @@ public class MovieController implements HttpHandler {
 
         try {
             String requestBody = readRequestBody(exchange);
+            Movie movie = gson.fromJson(requestBody, Movie.class);
 
-            if (!isValidMovieJson(requestBody)) {
+            if (!isValidMovie(movie)) {
                 ApiUtils.sendResponse(exchange, 400, "{ \"error\": \"Invalid movie data\" }");
                 return;
             }
-
-            String title = extractValue(requestBody, "title");
-            String genre = extractValue(requestBody, "genre");
-            int releaseYear = Integer.parseInt(extractValue(requestBody, "releaseYear"));
-
-            Movie movie = new Movie(title, genre, releaseYear);
 
             boolean deleted = movieService.deleteMovie(movie);
 
@@ -128,30 +118,26 @@ public class MovieController implements HttpHandler {
 
         try {
             String requestBody = readRequestBody(exchange);
+            Movie updatedMovie = gson.fromJson(requestBody, Movie.class);
 
-            if (!requestBody.contains("id") || !isValidMovieJson(requestBody)) {
+            if (updatedMovie == null ||
+                    updatedMovie.getId() == null ||
+                    !isValidMovie(updatedMovie)) {
                 ApiUtils.sendResponse(exchange, 400, "{ \"error\": \"Invalid movie data\" }");
                 return;
             }
 
-            String id = extractValue(requestBody, "id");
-            String title = extractValue(requestBody, "title");
-            String genre = extractValue(requestBody, "genre");
-            int releaseYear = Integer.parseInt(extractValue(requestBody, "releaseYear"));
-
-            Movie updatedMovie = new Movie(title, genre, releaseYear);
-
-            Optional<Movie> result = movieService.updateMovie(id, updatedMovie);
+            Optional<Movie> result = movieService.updateMovie(
+                    updatedMovie.getId().toString(),
+                    updatedMovie
+            );
 
             if (result.isEmpty()) {
                 ApiUtils.sendResponse(exchange, 404, "{ \"error\": \"Movie not found\" }");
                 return;
             }
 
-            String response = "[{ \"message\": \"Movie updated successfully\" }, " +
-                    movieToJson(result.get()) + "]";
-
-            ApiUtils.sendResponse(exchange, 200, response);
+            ApiUtils.sendResponse(exchange, 200, gson.toJson(result.get()));
 
         } catch (Exception e) {
             ApiUtils.sendResponse(exchange, 400, "{ \"error\": \"Invalid movie data\" }");
@@ -167,41 +153,17 @@ public class MovieController implements HttpHandler {
         Map<String, String> params = ApiUtils.parseQueryParams(exchange.getRequestURI().getQuery());
         List<Movie> result = movieService.searchMovies(params);
 
-        String json = moviesToJson(result);
-
-        ApiUtils.sendResponse(exchange, 200, json);
+        ApiUtils.sendResponse(exchange, 200, gson.toJson(result));
     }
 
     private String readRequestBody(HttpExchange exchange) throws IOException {
         return new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
     }
 
-    private boolean isValidMovieJson(String requestBody) {
-        return requestBody.contains("title")
-                && requestBody.contains("genre")
-                && requestBody.contains("releaseYear");
-    }
-
-    private String extractValue(String json, String key) {
-        String value = json.split("\"" + key + "\"\\s*:\\s*")[1];
-
-        if (value.startsWith("\"")) {
-            return value.split("\"")[1];
-        } else {
-            return value.split("[,}]")[0].trim();
-        }
-    }
-
-    private String moviesToJson(List<Movie> movies) {
-        return movies.stream()
-                .map(this::movieToJson)
-                .collect(Collectors.joining(", ", "[", "]"));
-    }
-
-    private String movieToJson(Movie movie) {
-        return "{ \"id\": \"" + movie.getId() + "\", " +
-                "\"title\": \"" + movie.getTitle() + "\", " +
-                "\"genre\": \"" + movie.getGenre() + "\", " +
-                "\"releaseYear\": " + movie.getReleaseYear() + " }";
+    private boolean isValidMovie(Movie movie) {
+        return movie != null
+                && movie.getTitle() != null
+                && movie.getGenre() != null
+                && movie.getReleaseYear() != 0;
     }
 }
